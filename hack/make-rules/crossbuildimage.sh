@@ -23,7 +23,7 @@ set -o pipefail
 KUBEEDGE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 IMAGE_TAG=$(git describe --tags)
 GO_LDFLAGS="$(${KUBEEDGE_ROOT}/hack/make-rules/version.sh)"
-IMAGE_REPO_NAME="${IMAGE_REPO_NAME:-kubeedge}"
+IMAGE_REPO_NAME="swr.cn-north-4.myhuaweicloud.com/cloud-native-riscv64"
 
 ALL_IMAGES_AND_TARGETS=(
   #{target}:{IMAGE_NAME}:{DOCKERFILE_PATH}
@@ -92,7 +92,8 @@ function build_multi_arch_images() {
     # https://github.com/docker/buildx/issues/495
     # https://github.com/multiarch/qemu-user-static/issues/100
     # docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
-    docker buildx build --build-arg GO_LDFLAGS="${GO_LDFLAGS}" -t ${IMAGE_REPO_NAME}/${IMAGE_NAME}:${IMAGE_TAG} -f ${DOCKERFILE_PATH} --platform linux/amd64,linux/arm64,linux/arm/v7 --push .
+    # 只需构建边缘端使用的edgecore，cloudcore使用官方提供的amd架构镜像
+    nerdctl build --build-arg GO_LDFLAGS="${GO_LDFLAGS}" -t ${IMAGE_REPO_NAME}/${IMAGE_NAME}:${IMAGE_TAG} -f ${DOCKERFILE_PATH} --platform linux/riscv64 .
     set +x
   done
 }

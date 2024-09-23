@@ -15,6 +15,7 @@ import (
 	cloudmodules "github.com/kubeedge/kubeedge/cloud/pkg/common/modules"
 	"github.com/kubeedge/kubeedge/common/constants"
 	connect "github.com/kubeedge/kubeedge/edge/pkg/common/cloudconnection"
+	messagepkg "github.com/kubeedge/kubeedge/edge/pkg/common/message"
 	"github.com/kubeedge/kubeedge/edge/pkg/common/modules"
 	"github.com/kubeedge/kubeedge/edge/pkg/metamanager/client"
 	metaManagerConfig "github.com/kubeedge/kubeedge/edge/pkg/metamanager/config"
@@ -224,6 +225,7 @@ func (m *metaManager) processUpdate(message model.Message) {
 		m.processRemote(message)
 		return
 	}
+	// 存数据库
 	if err := m.handleMessage(&message); err != nil {
 		feedbackError(err, message)
 		return
@@ -233,11 +235,15 @@ func (m *metaManager) processUpdate(message model.Message) {
 		// For pod status update message, we need to wait for the response message
 		// to ensure that the pod status is correctly reported to the kube-apiserver
 		sendToCloud(&message)
+		// klog.Infof("edged->cloud:  %s", message)
 		resp := message.NewRespByMessage(&message, OK)
+		// klog.Infof("edged->cloud resp:  %s", resp)
 		sendToEdged(resp, message.IsSync())
 	case cloudmodules.EdgeControllerModuleName, cloudmodules.DynamicControllerModuleName:
 		sendToEdged(&message, message.IsSync())
+		// klog.Infof("edgecontroller->edged:	%s", message)
 		resp := message.NewRespByMessage(&message, OK)
+		// klog.Infof("edgecontroller->edged resp:  %s", resp)
 		sendToCloud(resp)
 	case cloudmodules.DeviceControllerModuleName:
 		resp := message.NewRespByMessage(&message, OK)
@@ -247,6 +253,9 @@ func (m *metaManager) processUpdate(message model.Message) {
 	case cloudmodules.PolicyControllerModuleName:
 		resp := message.NewRespByMessage(&message, OK)
 		sendToCloud(resp)
+	case modules.EdgeTunnelModuleName:
+		resp := message.NewRespByMessage(&message, OK)
+		m.Client.SendMessage(*resp)
 	default:
 		klog.Errorf("unsupport message source, %s", msgSource)
 	}
@@ -257,7 +266,44 @@ func (m *metaManager) processPatch(message model.Message) {
 		feedbackError(err, message)
 		return
 	}
-	sendToCloud(&message)
+
+	if connect.IsConnected() {
+		klog.Info("与云保持连接，正常发送消息……")
+		sendToCloud(&message)
+	} else {
+		feedbackError(connect.ErrConnectionLost, message)
+		klog.Info("与云连接断开，通过Edgemesh广播进行PodPatch……")
+		Podname := ResourceGetname(message.GetResource()) //解析出Podname
+		ready, err := PodcontainerisReady([]byte(message.Content.(string)))
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return
+		} //检查消息中的Pod是否Ready
+		if ready {
+			klog.Info("Pod Container Ready...")
+			Podfound := checkAndUpdatePod(Podname, ready)
+			if Podfound {
+				msg := model.NewMessage("").
+					BuildRouter(m.nodeName, "edgemesh", "pods", "patch").
+					FillBody("Podinfo")
+				klog.Infof("Pod is Ready,Send Pod info to Edgemesh:%+v", msg)
+				m.Client.SendMessage(*msg)
+			}
+
+		} else {
+			klog.Info("Pod Container not Ready...")
+			Podfound := checkAndUpdatePod(Podname, ready)
+			if !Podfound {
+				addnotReadyPodName(Podname)
+				msg := model.NewMessage("").
+					BuildRouter(m.nodeName, "edgemesh", "pods", "patch").
+					FillBody(ResourceGetname(message.GetResource()))
+				klog.Infof("Pod not Ready,Send message to Edgemesh:%+v", msg)
+
+				m.Client.SendMessage(*msg)
+			}
+		}
+	}
 }
 
 func (m *metaManager) processResponse(message model.Message) {
@@ -309,6 +355,9 @@ func (m *metaManager) processQuery(message model.Message) {
 		m.processRemote(message)
 		return
 	}
+	// if requireRemoteQuery(resType) && !connect.IsConnected() {
+	// 	m.processMesh(message)
+	// }
 
 	if resID == "" {
 		// Get specific type resources
@@ -372,6 +421,27 @@ func (m *metaManager) processRemote(message model.Message) {
 	}()
 }
 
+func (m *metaManager) processMesh(message model.Message) {
+	go func() {
+		resKey, resType, resID := parseResource(&message)
+		var metas *[]string
+		var err error
+		if resType == model.ResourceTypeNode && resID == m.nodeName {
+			metas, err = dao.QueryMeta("key", resKey)
+			if err != nil {
+				klog.Errorf("query meta failed, %s", msgDebugInfo(&message))
+				feedbackError(fmt.Errorf("failed to query meta in DB: %s", err), message)
+			} else {
+				resp := message.NewRespByMessage(&message, *metas)
+				resp.SetRoute(modules.MetaManagerModuleName, resp.GetGroup())
+				m.Client.SendMessage(*resp)
+			}
+		} else {
+			m.Client.SendMessage(message)
+		}
+	}()
+}
+
 func isObjectResp(data map[string]interface{}) bool {
 	_, ok := data["Object"]
 	if !ok {
@@ -415,6 +485,8 @@ func (m *metaManager) process(message model.Message) {
 		constants.CSIOperationTypeControllerPublishVolume,
 		constants.CSIOperationTypeControllerUnpublishVolume:
 		m.processVolume(message)
+	case messagepkg.OperationDisconnect:
+		m.Client.SendMessage(message)
 	default:
 		klog.Errorf("metamanager not supported operation: %v", operation)
 	}

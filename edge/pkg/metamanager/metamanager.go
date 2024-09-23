@@ -1,11 +1,16 @@
 package metamanager
 
 import (
+	"context"
+	"os"
+
 	"github.com/beego/beego/orm"
 	"k8s.io/klog/v2"
 
 	"github.com/kubeedge/beehive/pkg/core"
 	beehiveContext "github.com/kubeedge/beehive/pkg/core/context"
+	"github.com/kubeedge/beehive/pkg/core/model"
+	"github.com/kubeedge/kubeedge/common/constants"
 	"github.com/kubeedge/kubeedge/edge/pkg/common/modules"
 	metamanagerconfig "github.com/kubeedge/kubeedge/edge/pkg/metamanager/config"
 	"github.com/kubeedge/kubeedge/edge/pkg/metamanager/dao"
@@ -17,14 +22,23 @@ import (
 )
 
 type metaManager struct {
-	enable bool
+	enable   bool
+	Client   *UnixSocketClient
+	nodeName string
 }
 
 var _ core.Module = (*metaManager)(nil)
 
 func newMetaManager(enable bool) *metaManager {
+	klog.Info("initialize socket client")
+	nodeName, _ := os.LookupEnv("NODE_NAME")
 	return &metaManager{
 		enable: enable,
+		Client: &UnixSocketClient{
+			socketPath:  constants.DefaultSocketAddr,
+			messageChan: make(chan model.Message),
+		},
+		nodeName: nodeName,
 	}
 }
 
@@ -60,10 +74,15 @@ func (m *metaManager) Enable() bool {
 }
 
 func (m *metaManager) Start() {
+	ctx, cancel := context.WithCancel(beehiveContext.GetContext())
+	defer cancel()
+
 	if metaserverconfig.Config.Enable {
 		imitator.StorageInit()
-		go metaserver.NewMetaServer().Start(beehiveContext.Done())
+		go metaserver.NewMetaServer().Start(ctx.Done())
 	}
 
+	klog.Info("Starting meta manager")
+	go m.runSocketClient(ctx)
 	m.runMetaManager()
 }

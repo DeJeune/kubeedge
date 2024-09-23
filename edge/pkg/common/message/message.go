@@ -9,6 +9,7 @@ const (
 	ResourceTypeNodeConnection = "node/connection"
 	SourceNodeConnection       = "edgehub"
 	OperationNodeConnection    = "connect"
+	OperationDisconnect        = "disconnect"
 	OperationSubscribe         = "subscribe"
 	OperationUnsubscribe       = "unsubscribe"
 	OperationMessage           = "message"

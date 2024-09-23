@@ -15,4 +15,5 @@ const (
 	EdgeHubModuleName = "websocket"
 	// MetaManagerModuleName metamanager module name
 	MetaManagerModuleName = "metamanager"
+	EdgeTunnelModuleName  = "EdgeTunnel"
 )

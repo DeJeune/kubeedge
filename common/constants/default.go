@@ -61,6 +61,7 @@ const (
 	DefaultRemoteQueryTimeout = 60
 	DefaultMetaServerAddr     = "127.0.0.1:10550"
 	DefaultDummyServerAddr    = "169.254.30.10:10550"
+	DefaultSocketAddr         = "/var/lib/kubeedge/edgemesh.sock"
 
 	// Config
 	DefaultKubeContentType         = "application/vnd.kubernetes.protobuf"
