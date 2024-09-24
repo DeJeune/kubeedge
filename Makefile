@@ -365,7 +365,8 @@ image:
 	@echo "IMAGE_HELP_INFO"
 else
 image:
-	hack/make-rules/image.sh $(WHAT)
+	@echo "Building image for: $(WHAT)"
+	@hack/make-rules/image.sh $(WHAT) || (echo "Image build failed with exit code $$?"; exit 1)
 endif
 
 define CROSS_IMAGE_HELP_INFO

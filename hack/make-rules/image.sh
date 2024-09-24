@@ -16,11 +16,12 @@
 #limitations under the License.
 ###
 
-set -o errexit
-set -o nounset
-set -o pipefail
+set -e
+set -u
+set -o pipefail	
 
 KUBEEDGE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+
 
 ALL_IMAGES_AND_TARGETS=(
   #{target}:{IMAGE_NAME}:{DOCKERFILE_PATH}
@@ -37,6 +38,8 @@ ALL_IMAGES_AND_TARGETS=(
   controllermanager:controller-manager:build/controllermanager/Dockerfile
   installation-package:installation-package:build/docker/installation-package/installation-package.dockerfile
 )
+
+
 
 GO_LDFLAGS="$(${KUBEEDGE_ROOT}/hack/make-rules/version.sh)"
 IMAGE_TAG=$(git describe --tags)
@@ -77,6 +80,7 @@ function build_images() {
     targets+=("${arg}")
   done
 
+
   if [[ ${#targets[@]} -eq 0 ]]; then
      for bt in "${ALL_IMAGES_AND_TARGETS[@]}" ; do
        targets+=("${bt%%:*}")
@@ -84,16 +88,16 @@ function build_images() {
   fi
 
   for arg in "${targets[@]}"; do
+
     IMAGE_NAME="$(get_imagename_by_target ${arg})"
     DOCKERFILE_PATH="$(get_dockerfile_by_target ${arg})"
 
     set -x
-    docker build --build-arg GO_LDFLAGS="${GO_LDFLAGS}" -t kubeedge/${IMAGE_NAME}:${IMAGE_TAG} -f ${DOCKERFILE_PATH} .
+    nerdctl build --build-arg GO_LDFLAGS="${GO_LDFLAGS}" -t "swr.cn-north-4.myhuaweicloud.com/cloud-native-riscv64/${IMAGE_NAME}:${IMAGE_TAG}" -f ${DOCKERFILE_PATH} .
     set +x
 
     if [[ "${DOCKER_BUILD_AND_SYSTEM_PRUNE}" = "true" ]]; then
-      docker builder prune -f
-      docker system prune -f
+      nerdctl builder prune -f
     fi
   done
 }

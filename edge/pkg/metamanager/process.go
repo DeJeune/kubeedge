@@ -280,23 +280,32 @@ func (m *metaManager) processPatch(message model.Message) {
 			return
 		} //检查消息中的Pod是否Ready
 		if ready {
-			klog.Info("Pod Container Ready...")
+			klog.Info("Pod容器准备就绪...")
 			Podfound := checkAndUpdatePod(Podname, ready)
 			if Podfound {
+				endpoints, err := FetchFormattedJSONFromURL("http://127.0.0.1:10550/api/v1/endpoints")
+				if err != nil {
+					fmt.Println(err)
+				}
+
+				filterendpoints, err := filterEndpointsByPodName(endpoints, Podname)
+				if err != nil {
+					fmt.Println(err)
+				}
 				msg := model.NewMessage("").
-					BuildRouter(m.nodeName, "edgemesh", "pods", "patch").
-					FillBody("Podinfo")
+					BuildRouter(m.nodeName, "edgemesh", "pods", "patchReady").
+					FillBody(filterendpoints)
 				klog.Infof("Pod is Ready,Send Pod info to Edgemesh:%+v", msg)
 				m.Client.SendMessage(*msg)
 			}
 
 		} else {
-			klog.Info("Pod Container not Ready...")
+			klog.Info("Pod容器故障...")
 			Podfound := checkAndUpdatePod(Podname, ready)
 			if !Podfound {
 				addnotReadyPodName(Podname)
 				msg := model.NewMessage("").
-					BuildRouter(m.nodeName, "edgemesh", "pods", "patch").
+					BuildRouter(m.nodeName, "edgemesh", "pods", "patchNotReady").
 					FillBody(ResourceGetname(message.GetResource()))
 				klog.Infof("Pod not Ready,Send message to Edgemesh:%+v", msg)
 

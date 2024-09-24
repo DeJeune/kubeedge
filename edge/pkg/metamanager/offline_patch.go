@@ -46,7 +46,7 @@ func addnotReadyPodName(podName string) {
 	notreadypodNames = append(notreadypodNames, podName)
 
 	// 输出当前数组中的所有 Pod 名称
-	klog.Info("输出Pod列表: ", notreadypodNames)
+	klog.Info("当前本机的故障Pod: ", notreadypodNames)
 }
 
 func checkAndUpdatePod(podName string, delete bool) bool {
@@ -57,6 +57,7 @@ func checkAndUpdatePod(podName string, delete bool) bool {
 	for i, pod := range notreadypodNames {
 		if pod == podName {
 			found = true
+			klog.Info("Pod恢复...")
 			if delete {
 				// 删除 Pod，调整数组
 				notreadypodNames = append(notreadypodNames[:i], notreadypodNames[i+1:]...)
@@ -66,9 +67,7 @@ func checkAndUpdatePod(podName string, delete bool) bool {
 	}
 
 	// 输出当前数组中的所有 Pod 名称
-	for _, pod := range notreadypodNames {
-		fmt.Println(pod)
-	}
+	klog.Info("当前本机的故障Pod: ", notreadypodNames)
 
 	return found
 }
